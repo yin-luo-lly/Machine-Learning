@@ -8,36 +8,49 @@
 地点	 8-411       	教师	   熊东平             
          
 一、课题设计背景
+
  信息抽取是自然语言处理领域的一项基础任务，涉及事件抽取、命名实体识别等多个子任务。事件检测作为事件抽取的一个子任务，其结果对后续的事件元素抽取任务产生着重要影响。由于一个完整的法律案件通常需要一段包含多个事件的较长文本进行描述，而且其中往往存在触发词不明显或者不包含触发词的事件，因此，常用的基于触发词进行事件检测模型不能很好的发挥作用。随着国家法律体系的细化、完善，司法部门日常需要处理大量的案件信息。为帮助司法办案人员快速理清案件的发展状况，掌握法律案件中包含哪些类型的事件，需要依据真实存在的法律案件信息（人名、时间等信息已重造）利用机器学习等相关技术，建立稳健的事件检测模型，用于判断法律案件中所包含的各个事件对应的事件类型，为后续抽取各事件所涉及的元素提供有利信息。
 本设计针对法律案件中存在触发词不明显或者不包含触发词的事件，试图建立稳健的事件检测模型，用于判断法律案件中所包含的各个事件对应的事件类型，进而对后续的事件元素抽取任务提供支持。
 
 二、设计方案概述
+
 1.数据准备
+
 (1) 从数据集构建训练集、验证集和测试集
 (2) 使用Pandas进行数据统计分析，包括文本长度统计、标签分布统计等
 (3) 使用Seaborn和Matplotlib进行数据可视化分析
+
 2.模型训练
+
 (1) 使用ERNIE-3.0预训练模型作为backbone
 (2) 使用二分类交叉熵损失函数
 (3) 使用线性学习率衰减策略
 (4) 使用FGM进行对抗训练
 (5) 评估指标使用AUC和F1-score
+
 3.模型测试
+
 (1) 使用训练得到的最好模型进行测试集预测
 (2) 对预测结果进行后处理
 (3) 保存预测结果到submit.json文件
+
 4.数据处理
+
 (1) 定义数据预处理函数
 (2) 定义数据Batch处理函数
 (3) 定义数据后处理函数
+
 5.工具函数
+
 (1) 定义数据集加载函数
 (2) 定义模型评估函数
 (3) 定义FGM对抗训练函数
 (4) 定义预测结果后处理函数
 
 三 、具体实现
+
  1.准备数据
+ 
 数据格式如下：
 {
 "id": 1, 
@@ -52,6 +65,7 @@
 ]
 }
 由于实际上目标任务是一个多分类任务，因此只保留了数据中id,text,event_type属性（其中event_type用label代替），分别生成训练集、验证集和测试集。
+
 from utils import id_label, data_prepare
 
 datapath = 'Data'
@@ -62,6 +76,7 @@ dev_dataset = data_prepare(datapath, label2id, mode='dev')
 test_dataset = data_prepare(datapath, label2id, mode='test')
 
 2.数据探索
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -71,11 +86,13 @@ from collections import Counter
 from matplotlib.font_manager import FontProperties
 
 （1）查看数据
+
   df_train = pd.DataFrame.from_dict(train_dataset)
   df_train.head() 
   df_train.info()
 
 （2）文本长度分布
+
   # 训练集的文本长度描述
   df_train['lenth'] = df_train['text'].apply(lambda x:len(x))
   df_train['lenth'].describe()
@@ -108,6 +125,7 @@ from matplotlib.font_manager import FontProperties
   scipy.stats.ks_2samp(df_train['lenth'], df_test['lenth'])
   
 （3）截断位置选择
+
      log_train_len = np.log(1+df_train['lenth'])
      log_test_len = np.log(1+df_test['lenth'])
      _, lognormal_ks_pvalue = scipy.stats.kstest(rvs=log_train_len, cdf='norm')
@@ -123,24 +141,25 @@ from matplotlib.font_manager import FontProperties
     plt.legend(['train_len','test_len'])
    
 （4）类别分析
-  num_label = []
-  for j in range(len(id2label)):
+ num_label = []
+ for j in range(len(id2label)):
       m = 0
       for i in range(len(df_train['labels'])):
          m += df_train['labels'][i][j]
       num_label.append(m)
-      
-    objs = [df_train[['id', 'lenth']], pd.DataFrame(df_train['labels'].tolist())]
-    ans1 = pd.concat(objs, axis=1)
-    ans2 = pd.melt(ans1, var_name='id_label', value_name='labels', id_vars=['id', 'lenth'])
-    ans2 = ans2[ans2['labels']!=0.0].reset_index(drop=True).drop('labels', axis=1)
+ objs = [df_train[['id', 'lenth']], pd.DataFrame(df_train['labels'].tolist())]
+ ans1 = pd.concat(objs, axis=1)
+ ans2 = pd.melt(ans1, var_name='id_label', value_name='labels', id_vars=['id', 'lenth'])
+ ans2 = ans2[ans2['labels']!=0.0].reset_index(drop=True).drop('labels', axis=1)
 
-   plt.figure()
-   ax = sns.catplot(x='id_label', y='lenth', data=ans2, kind='strip')
-   plt.xticks(range(len(id2label)), list(id2label.values()), rotation=45)
+ plt.figure()
+ ax = sns.catplot(x='id_label', y='lenth', data=ans2, kind='strip')
+ plt.xticks(range(len(id2label)), list(id2label.values()), rotation=45)
    
 3.事件检测分类
+
 （1）从本地文件创建数据集
+
   from paddlenlp.datasets import load_dataset
   from utils import id_label, data_prepare, data_split
 
@@ -166,6 +185,7 @@ from matplotlib.font_manager import FontProperties
   print("测试集样例:", test_dataset[291])
 
 （2)将文本数据处理成模型可以接受的 feature
+
 from paddlenlp.transformers import LinearDecayWithWarmup
 from paddlenlp.metrics import ChunkEvaluator
 from paddlenlp.datasets import load_dataset
@@ -202,6 +222,7 @@ print(train_dataset[0])
 print(test_dataset[0])
 
 （3）组成batch  
+
 # collate_fn函数构造，将不同长度序列充到批中数据的最大长度，再将数据堆叠
 
 collate_fn = lambda samples, fn=Dict({
@@ -217,7 +238,9 @@ train_data_loader = DataLoader(dataset=train_dataset, batch_sampler=train_batch_
 
 test_batch_sampler = BatchSampler(test_dataset, batch_size=16, shuffle=False)
 test_data_loader = DataLoader(dataset=test_dataset, batch_sampler=test_batch_sampler, collate_fn=collate_fn)
+
 （4）定义模型网络和损失函数
+
 from metric import MultiLabelReport
 import paddle
 
@@ -254,6 +277,7 @@ criterion = paddle.nn.BCEWithLogitsLoss()
 metric = MultiLabelReport()
 
 （5）开始训练
+
 import time
 from eval import evaluate
 import paddle.nn.functional as F
@@ -301,6 +325,7 @@ def train(epochs, save_dir=ckpt_dir):
 train(epochs=epochs, save_dir=ckpt_dir)
 
 （6）对抗训练
+
 class FGM(): # 对抗训练
     def __init__(self, model):
         self.model = model
@@ -381,6 +406,7 @@ def FGM_train(epochs, save_dir=ckpt_dir):
 FGM_train(epochs=epochs, save_dir=ckpt_dir)
 
 （7）提交结果
+
 # 加载已经训练好的模型
 model.set_dict(paddle.load('ernie_ckpt/model_state.pdparams'))
 
@@ -450,14 +476,18 @@ results1 = data_reprocess()
 print(results1[:5])
 
 4.导出结果
+
  # 保存结果文件
 with open('submit.json','w') as f:
     json.dump(results1,f)
+    
 四、结果及分析
+
 竞赛项目的准确率及排名的截图：
 测试运行结果截图：
 此时模型在验证集上的最佳F1值表现为：
 eval loss: 0.20442, auc: 0.97672, f1 score: 0.91613, precison: 0.94278, recall: 0.89096
 
 五、总结
+
 本次课程设计让我深刻体会到机器学习在信息抽取领域的强大能力，尤其是在法律领域篇章级多事件检测任务中，模型能够有效地识别并分类不同类型的事件，为后续的法律案件分析提供有力支持。同时，我也认识到机器学习模型的训练和应用并非易事，需要克服许多难题，比如：模型在测试集上取得了较好的成绩，但在实际的测试集中，模型预测的结果并不准确，因此需要进一步提升其泛化能力。
